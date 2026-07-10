@@ -3,22 +3,27 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useDayCore } from "../lib/useDayCore";
+import { apiEnabled, getTokens, logout } from "../lib/api";
 
 const nav = [
   ["/", "☀", "Мой день", "home"],
   ["/tasks", "✓", "Задачи", "tasks"],
   ["/calendar", "□", "Календарь", "calendar"],
+  ["/categories", "●", "Категории", "categories"],
   ["/habits", "↗", "Привычки", "habits"],
   ["/focus", "◉", "Фокус", "focus"],
   ["/stats", "▥", "Статистика", "stats"],
+  ["/settings", "⚙", "Настройки", "settings"],
 ] as const;
 
 const titles: Record<string, [string, string]> = {
   tasks: ["Задачи", "Собери всё важное в одном месте."],
   calendar: ["Календарь", "Планируй неделю и сохраняй баланс."],
+  categories: ["Категории", "Создавай категории один раз и используй их в планах."],
   habits: ["Привычки", "Маленькие действия создают большие изменения."],
   focus: ["Фокус", "Выключи шум и сделай главное."],
   stats: ["Статистика", "Посмотри, как растёт твоя продуктивность."],
+  settings: ["Настройки", "Настрой DayCore под свой ритм."],
 };
 
 function formatMinutes(totalMinutes: number) {
@@ -39,9 +44,13 @@ export default function SectionPage({ section }: { section: string }) {
     tasks,
     habits,
     events,
+    categories,
+    settings,
     focusState,
     taskStats,
     focusProgress,
+    focusTodayStats,
+    focusWeekStats,
     habitProgress,
     addTask,
     toggleTask,
@@ -50,6 +59,9 @@ export default function SectionPage({ section }: { section: string }) {
     toggleHabitDay,
     addEvent,
     removeEvent,
+    addCategory,
+    removeCategory,
+    updateSettings,
     setFocusMode,
     toggleFocus,
     resetFocus,
@@ -59,14 +71,18 @@ export default function SectionPage({ section }: { section: string }) {
   const [query, setQuery] = useState("");
   const [newTask, setNewTask] = useState("");
   const [newHabit, setNewHabit] = useState("");
-  const [newTaskTime, setNewTaskTime] = useState("09:00");
-  const [newTaskTag, setNewTaskTag] = useState("Личное");
+  const [newTaskTime, setNewTaskTime] = useState(settings.defaultTaskTime);
+  const [newTaskTag, setNewTaskTag] = useState(settings.defaultCategory);
   const [newHabitGoal, setNewHabitGoal] = useState("");
   const [newHabitDescription, setNewHabitDescription] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [eventTitle, setEventTitle] = useState("");
-  const [eventTime, setEventTime] = useState("09:00");
-  const [eventTag, setEventTag] = useState("План");
+  const [eventTime, setEventTime] = useState(settings.defaultTaskTime);
+  const [eventTag, setEventTag] = useState(settings.defaultCategory);
+  const [newCategory, setNewCategory] = useState("");
+  const [newCategoryColor, setNewCategoryColor] = useState("#2878f0");
+  const [categoryError, setCategoryError] = useState("");
+  const [notificationPermission, setNotificationPermission] = useState(() => typeof Notification === "undefined" ? "unsupported" : Notification.permission);
 
   const sectionTitle = titles[section] ?? titles.tasks;
   const visibleTasks = useMemo(
@@ -88,12 +104,20 @@ export default function SectionPage({ section }: { section: string }) {
   );
   const todayHabitCount = habits.filter((habit) => habit.week[(today.getDay() + 6) % 7]).length;
   const bestStreak = habits.reduce((best, habit) => Math.max(best, habit.streak), 0);
+  const weekTasks = useMemo(() => {
+    const start = currentWeek[0]?.key;
+    const end = currentWeek[6]?.key;
+    return start && end ? tasks.filter((task) => task.date >= start && task.date <= end) : [];
+  }, [currentWeek, tasks]);
+  const weeklyTasksDone = weekTasks.filter((task) => task.done).length;
+  const weeklyTaskProgress = weekTasks.length ? Math.round((weeklyTasksDone / weekTasks.length) * 100) : 0;
+  const maxDailyCompleted = Math.max(1, ...currentWeek.map((day) => tasks.filter((task) => task.date === day.key && task.done).length));
   const categorySummary = useMemo(() => {
-    const totals = tasks.reduce<Record<string, number>>((map, task) => {
+    const totals = weekTasks.reduce<Record<string, number>>((map, task) => {
       map[task.tag] = (map[task.tag] ?? 0) + 1;
       return map;
     }, {});
-    const total = Math.max(tasks.length, 1);
+    const total = Math.max(weekTasks.length, 1);
 
     return Object.entries(totals)
       .sort((left, right) => right[1] - left[1])
@@ -103,13 +127,13 @@ export default function SectionPage({ section }: { section: string }) {
         percent: Math.round((count / total) * 100),
         color: ["#2878f0", "#8b5cf6", "#10b981", "#f59e0b"][index],
       }));
-  }, [tasks]);
+  }, [weekTasks]);
 
   const addTaskFromPage = () => {
     addTask(newTask, { date: selectedDate, time: newTaskTime, tag: newTaskTag });
     setNewTask("");
-    setNewTaskTime("09:00");
-    setNewTaskTag("Личное");
+    setNewTaskTime(settings.defaultTaskTime);
+    setNewTaskTag(settings.defaultCategory);
   };
 
   const addHabitFromPage = () => {
@@ -122,8 +146,30 @@ export default function SectionPage({ section }: { section: string }) {
   const addEventFromPage = () => {
     addEvent(eventTitle, selectedDate, eventTime, eventTag);
     setEventTitle("");
-    setEventTime("09:00");
-    setEventTag("План");
+    setEventTime(settings.defaultTaskTime);
+    setEventTag(settings.defaultCategory);
+  };
+
+  const addCategoryFromPage = () => {
+    if (!addCategory(newCategory, newCategoryColor)) {
+      setCategoryError(newCategory.trim() ? "Такая категория уже существует" : "Введите название категории");
+      return;
+    }
+    setNewTaskTag(newCategory.trim());
+    setEventTag(newCategory.trim());
+    setNewCategory("");
+    setCategoryError("");
+  };
+
+  const enableBrowserNotifications = async () => {
+    if (typeof Notification === "undefined") {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    updateSettings({ notificationsEnabled: permission === "granted" });
+    if (permission === "granted") new Notification("DayCore", { body: "Уведомления включены — всё готово." });
   };
 
   return (
@@ -150,7 +196,7 @@ export default function SectionPage({ section }: { section: string }) {
           <div className="profile">
             <div className="avatar">ИА</div>
             <div>
-              <strong>Иброхим</strong>
+              <strong>{settings.displayName || "Пользователь"}</strong>
               <small>Твой лучший день</small>
             </div>
             <button type="button">•••</button>
@@ -168,7 +214,7 @@ export default function SectionPage({ section }: { section: string }) {
           </div>
           <div className="top-actions">
             <button type="button">⌕</button>
-            <button type="button">♢<i /></button>
+            <Link className="top-action-link" href="/settings#notifications" title="Настройки уведомлений">♢<i /></Link>
             <button className="theme-icon" onClick={() => setDark((value) => !value)} type="button">{dark ? "☀" : "☾"}</button>
           </div>
         </header>
@@ -182,6 +228,7 @@ export default function SectionPage({ section }: { section: string }) {
             {section === "tasks" && <button className="primary compact" onClick={() => document.getElementById("new-task")?.focus()} type="button">+ Новая задача</button>}
             {section === "habits" && <button className="primary compact" onClick={() => document.getElementById("new-habit")?.focus()} type="button">+ Новая привычка</button>}
             {section === "calendar" && <button className="primary compact" onClick={() => document.getElementById("new-event")?.focus()} type="button">+ Новое событие</button>}
+            {section === "categories" && <button className="primary compact" onClick={() => document.getElementById("new-category")?.focus()} type="button">+ Новая категория</button>}
           </section>
           {section === "tasks" && (
             <div className="two-layout">
@@ -210,7 +257,9 @@ export default function SectionPage({ section }: { section: string }) {
                   <button onClick={addTaskFromPage} type="button">+</button>
                   <input id="new-task" value={newTask} onChange={(event) => setNewTask(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addTaskFromPage()} placeholder="Что нужно сделать?" />
                   <input className="time-input" type="time" value={newTaskTime} onChange={(event) => setNewTaskTime(event.target.value)} />
-                  <input className="tag-input" value={newTaskTag} onChange={(event) => setNewTaskTag(event.target.value)} placeholder="Категория" />
+                  <select className="tag-input" aria-label="Категория задачи" value={newTaskTag} onChange={(event) => setNewTaskTag(event.target.value)}>
+                    {categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+                  </select>
                   <kbd>Enter</kbd>
                 </div>
               </section>
@@ -267,11 +316,62 @@ export default function SectionPage({ section }: { section: string }) {
                   <button onClick={addEventFromPage} type="button">+</button>
                   <input id="new-event" value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addEventFromPage()} placeholder="Новое событие" />
                   <input className="time-input" type="time" value={eventTime} onChange={(event) => setEventTime(event.target.value)} />
-                  <input className="tag-input" value={eventTag} onChange={(event) => setEventTag(event.target.value)} placeholder="Категория" />
+                  <select className="tag-input" aria-label="Категория события" value={eventTag} onChange={(event) => setEventTag(event.target.value)}>
+                    {categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+                  </select>
                   <button className="task-more static" onClick={() => selectedDayEvents[0] && removeEvent(selectedDayEvents[0].id)} title="Удалить первое событие дня" type="button">×</button>
                 </div>
               </section>
             </>
+          )}
+          {section === "categories" && (
+            <section className="panel categories-panel">
+              <div className="category-create">
+                <input id="new-category" value={newCategory} onChange={(event) => { setNewCategory(event.target.value); setCategoryError(""); }} onKeyDown={(event) => event.key === "Enter" && addCategoryFromPage()} placeholder="Название категории" />
+                <label className="color-picker">Цвет <input type="color" value={newCategoryColor} onChange={(event) => setNewCategoryColor(event.target.value)} /></label>
+                <button className="primary compact" onClick={addCategoryFromPage} type="button">Создать</button>
+              </div>
+              {categoryError && <p className="form-error" role="alert">{categoryError}</p>}
+              <div className="category-list">
+                {categories.map((category) => {
+                  const usageCount = tasks.filter((task) => task.tag === category.name).length + events.filter((event) => event.tag === category.name).length;
+                  return (
+                    <article key={category.id}>
+                      <i style={{ background: category.color }} />
+                      <div><strong>{category.name}</strong><small>{usageCount} {usageCount === 1 ? "запись" : "записей"}</small></div>
+                      <button disabled={usageCount > 0} onClick={() => removeCategory(category.id)} title={usageCount > 0 ? "Категория используется — сначала удалите или перенесите записи" : "Удалить категорию"} type="button">×</button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+          {section === "settings" && (
+            <div className="settings-grid">
+              <section className="panel settings-card">
+                <p className="eyebrow">ПРОФИЛЬ И ДЕНЬ</p>
+                <h2>Основные настройки</h2>
+                <label>Ваше имя<input value={settings.displayName} onChange={(event) => updateSettings({ displayName: event.target.value })} /></label>
+                <label>Начало дня<input type="time" value={settings.dayStart} onChange={(event) => updateSettings({ dayStart: event.target.value })} /></label>
+                <label>Время новой задачи<input type="time" value={settings.defaultTaskTime} onChange={(event) => updateSettings({ defaultTaskTime: event.target.value })} /></label>
+                <label>Категория по умолчанию<select value={settings.defaultCategory} onChange={(event) => updateSettings({ defaultCategory: event.target.value })}>{categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>
+                <div className="setting-row"><div><strong>Синхронизация</strong><small>{apiEnabled && getTokens() ? "Backend подключён, данные синхронизируются" : "Локальный режим — войдите для синхронизации"}</small></div>{apiEnabled && getTokens() ? <button className="text-action danger-action" onClick={logout} type="button">Выйти</button> : <Link className="period-pill" href="/auth">Войти</Link>}</div>
+              </section>
+              <section className="panel settings-card">
+                <p className="eyebrow">ОФОРМЛЕНИЕ</p>
+                <h2>Внешний вид</h2>
+                <div className="setting-row"><div><strong>Тёмная тема</strong><small>Более спокойные цвета для вечерней работы</small></div><button className={dark ? "switch on" : "switch"} onClick={() => setDark((value) => !value)} aria-pressed={dark} type="button"><i /></button></div>
+              </section>
+              <section className="panel settings-card notifications-card" id="notifications">
+                <p className="eyebrow">УВЕДОМЛЕНИЯ</p>
+                <h2>Напоминания</h2>
+                <div className="permission-box"><div><strong>Системные уведомления</strong><small>{notificationPermission === "granted" ? "Разрешены в браузере" : notificationPermission === "denied" ? "Заблокированы в настройках браузера" : notificationPermission === "unsupported" ? "Не поддерживаются браузером" : "Нужно разрешение браузера"}</small></div><button className="primary compact" disabled={notificationPermission === "granted" || notificationPermission === "unsupported"} onClick={enableBrowserNotifications} type="button">{notificationPermission === "granted" ? "Включены" : "Разрешить"}</button></div>
+                <div className="setting-row"><div><strong>Напоминать о задачах</strong><small>Уведомление перед временем задачи</small></div><button className={settings.taskReminders ? "switch on" : "switch"} onClick={() => updateSettings({ taskReminders: !settings.taskReminders })} aria-pressed={settings.taskReminders} type="button"><i /></button></div>
+                <label>Напоминать заранее<select value={settings.reminderMinutes} onChange={(event) => updateSettings({ reminderMinutes: Number(event.target.value) })}><option value={5}>За 5 минут</option><option value={15}>За 15 минут</option><option value={30}>За 30 минут</option><option value={60}>За 1 час</option></select></label>
+                <div className="setting-row"><div><strong>Итоги дня</strong><small>Сводка выполненных задач и привычек</small></div><button className={settings.dailySummary ? "switch on" : "switch"} onClick={() => updateSettings({ dailySummary: !settings.dailySummary })} aria-pressed={settings.dailySummary} type="button"><i /></button></div>
+                <div className="setting-row"><div><strong>Напоминания о привычках</strong><small>Не забыть отметить ежедневный прогресс</small></div><button className={settings.habitReminders ? "switch on" : "switch"} onClick={() => updateSettings({ habitReminders: !settings.habitReminders })} aria-pressed={settings.habitReminders} type="button"><i /></button></div>
+              </section>
+            </div>
           )}
           {section === "habits" && (
             <div className="habits-layout">
@@ -332,9 +432,9 @@ export default function SectionPage({ section }: { section: string }) {
                 <article className="panel">
                   <p className="eyebrow">СЕГОДНЯ</p>
                   <h3>Фокус-сессии</h3>
-                  <div className="focus-number">{focusState.completedSessions} <small>сессии</small></div>
+                  <div className="focus-number">{focusTodayStats.sessions} <small>сессии</small></div>
                   <div className="progress"><i style={{ width: `${focusProgress}%` }} /></div>
-                  <p className="muted-copy">{formatMinutes(focusState.completedMinutes)} из цели 2ч</p>
+                  <p className="muted-copy">{formatMinutes(focusTodayStats.minutes)} из цели 2ч</p>
                 </article>
                 <article className="panel">
                   <p className="eyebrow">СОВЕТ</p>
@@ -347,8 +447,8 @@ export default function SectionPage({ section }: { section: string }) {
           {section === "stats" && (
             <>
               <section className="stat-cards">
-                <article className="panel"><span>✓</span><strong>{taskStats.done}</strong><small>задач выполнено</small><em>{taskStats.progress}% от общего списка</em></article>
-                <article className="panel"><span>◷</span><strong>{formatMinutes(focusState.completedMinutes)}</strong><small>в режиме фокуса</small><em>{focusState.completedSessions} завершённых сессии</em></article>
+                <article className="panel"><span>✓</span><strong>{weeklyTasksDone}</strong><small>задач выполнено за неделю</small><em>{weeklyTaskProgress}% недельного списка</em></article>
+                <article className="panel"><span>◷</span><strong>{formatMinutes(focusWeekStats.minutes)}</strong><small>в фокусе за неделю</small><em>{focusWeekStats.sessions} завершённых сессий</em></article>
                 <article className="panel"><span>↗</span><strong>{habitProgress}%</strong><small>привычек закрыто</small><em>{bestStreak} дней лучшая серия</em></article>
               </section>
               <div className="stats-grid">
@@ -360,7 +460,7 @@ export default function SectionPage({ section }: { section: string }) {
                   <div className="bar-chart">
                     {currentWeek.map((day) => {
                       const count = tasks.filter((task) => task.date === day.key && task.done).length;
-                      const height = Math.max(18, count * 24);
+                      const height = count ? Math.max(12, Math.round((count / maxDailyCompleted) * 100)) : 0;
                       return (
                         <div key={day.key}>
                           <span style={{ height: `${height}%` }} />

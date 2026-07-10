@@ -12,9 +12,12 @@ export default function Home() {
     currentWeek,
     todayKey,
     tasks,
+    categories,
+    settings,
     habits,
     focusState,
     taskStats,
+    focusTodayStats,
     addTask,
     toggleTask,
     removeTask,
@@ -25,6 +28,7 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [filter, setFilter] = useState("Все");
   const [activeDate, setActiveDate] = useState(todayKey);
+  const [taskCategory, setTaskCategory] = useState(settings.defaultCategory);
 
   const dayTasks = useMemo(
     () => tasks.filter((task) => task.date === activeDate),
@@ -38,7 +42,7 @@ export default function Home() {
   const completedHabitsToday = habits.filter((habit) => habit.week[(new Date().getDay() + 6) % 7]).length;
 
   const addTodayTask = () => {
-    addTask(title, { date: activeDate });
+    addTask(title, { date: activeDate, tag: taskCategory });
     setTitle("");
   };
 
@@ -63,6 +67,10 @@ export default function Home() {
             <span>□</span>
             Календарь
           </Link>
+          <Link className="nav-item" href="/categories">
+            <span>●</span>
+            Категории
+          </Link>
           <Link className="nav-item" href="/habits">
             <span>↗</span>
             Привычки
@@ -75,6 +83,10 @@ export default function Home() {
             <span>▥</span>
             Статистика
           </Link>
+          <Link className="nav-item" href="/settings">
+            <span>⚙</span>
+            Настройки
+          </Link>
         </nav>
         <div className="sidebar-bottom">
           <button className="theme-toggle" onClick={() => setDark((value) => !value)} aria-label="Переключить тему">
@@ -84,7 +96,7 @@ export default function Home() {
           <div className="profile">
             <div className="avatar">ИА</div>
             <div>
-              <strong>Иброхим</strong>
+              <strong>{settings.displayName || "Пользователь"}</strong>
               <small>Твой лучший день</small>
             </div>
             <button type="button">•••</button>
@@ -103,7 +115,7 @@ export default function Home() {
           </div>
           <div className="top-actions">
             <button title="Поиск" type="button">⌕</button>
-            <button title="Уведомления" type="button">♢<i /></button>
+            <Link className="top-action-link" href="/settings#notifications" title="Настройки уведомлений">♢<i /></Link>
             <button className="theme-icon" onClick={() => setDark((value) => !value)} type="button">
               {dark ? "☀" : "☾"}
             </button>
@@ -185,6 +197,9 @@ export default function Home() {
                   onKeyDown={(event) => event.key === "Enter" && addTodayTask()}
                   placeholder="Добавить новую задачу..."
                 />
+                <select className="tag-input" aria-label="Категория задачи" value={taskCategory} onChange={(event) => setTaskCategory(event.target.value)}>
+                  {categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+                </select>
                 <kbd>Enter</kbd>
               </div>
             </section>
@@ -247,7 +262,7 @@ export default function Home() {
             <div className="insight">
               <span>◷</span>
               <div>
-                <strong>{Math.floor(focusState.completedMinutes / 60)}ч {focusState.completedMinutes % 60}м</strong>
+                <strong>{Math.floor(focusTodayStats.minutes / 60)}ч {focusTodayStats.minutes % 60}м</strong>
                 <small>в фокусе</small>
               </div>
             </div>

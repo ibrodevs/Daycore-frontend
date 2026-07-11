@@ -31,7 +31,9 @@ npm run start
 2. Framework Preset: `Next.js`.
 3. Build Command: `npm run build`.
 4. Output Directory не переопределяйте — Vercel определит `.next` автоматически.
-5. Добавьте переменную `NEXT_PUBLIC_API_URL` с публичным HTTPS-адресом Django API.
+5. Добавьте `NEXT_PUBLIC_API_URL=https://daycore21.pythonanywhere.com` для Production, Preview и Development.
+
+Все страницы приложения, кроме `/auth`, закрыты проверкой JWT. Пользователь без действующей сессии автоматически перенаправляется на регистрацию/вход.
 
 Для прежней Cloudflare/vinext-сборки сохранены команды `npm run dev:vinext`, `npm run build:vinext` и `npm run start:vinext`.
 

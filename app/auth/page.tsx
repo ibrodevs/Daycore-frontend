@@ -19,7 +19,8 @@ export default function AuthPage() {
     try {
       if (mode === "register") await register(username, email, password, firstName);
       else await login(username, password);
-      window.location.href = "/";
+      const next = new URLSearchParams(window.location.search).get("next");
+      window.location.href = next?.startsWith("/") && !next.startsWith("//") ? next : "/";
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось войти");
     } finally {

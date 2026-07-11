@@ -1,4 +1,4 @@
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "https://daycore21.pythonanywhere.com").replace(/\/$/, "");
 
 export const apiEnabled = Boolean(API_URL);
 

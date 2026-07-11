@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Nunito } from "next/font/google";
 import "./globals.css";
+import AuthGate from "./components/AuthGate";
 
 const nunito = Nunito({
   variable: "--font-nunito",
@@ -27,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={`${nunito.variable} antialiased`}>
-        {children}
+        <AuthGate>{children}</AuthGate>
       </body>
     </html>
   );

@@ -57,6 +57,7 @@ export default function SectionPage({ section }: { section: string }) {
     removeTask,
     addHabit,
     toggleHabitDay,
+    removeHabit,
     addEvent,
     removeEvent,
     addCategory,
@@ -376,7 +377,7 @@ export default function SectionPage({ section }: { section: string }) {
           {section === "habits" && (
             <div className="habits-layout">
               <section className="panel habit-table">
-                <div className="habit-table-head"><span>Привычка</span>{["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"].map((item) => <b key={item}>{item}</b>)}<span>Серия</span></div>
+                <div className="habit-table-head"><span>Привычка</span>{["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"].map((item) => <b key={item}>{item}</b>)}<span>Серия</span><span /> </div>
                 {habits.map((habit) => (
                   <article key={habit.id}>
                     <div><strong>{habit.name}</strong><small>{habit.goal}{habit.description ? ` · ${habit.description}` : ""}</small></div>
@@ -384,6 +385,7 @@ export default function SectionPage({ section }: { section: string }) {
                       <button className={done ? "habit-check checked" : "habit-check"} key={index} onClick={() => toggleHabitDay(habit.id, index)} type="button">{done ? "✓" : ""}</button>
                     ))}
                     <span className="streak">🔥 {habit.streak}</span>
+                    <button className="habit-delete" onClick={() => removeHabit(habit.id)} title={`Удалить привычку «${habit.name}»`} aria-label={`Удалить привычку «${habit.name}»`} type="button">×</button>
                   </article>
                 ))}
                 <div className="quick-add">

@@ -578,6 +578,11 @@ export function useDayCore() {
     if (apiEnabled && getTokens()) apiRequest(`/api/habits/${habitId}/toggle-completion/`, { method: "POST", body: JSON.stringify({ date: currentWeek[dayIndex]?.key ?? todayKey }) }).catch(() => undefined);
   };
 
+  const removeHabit = (habitId: number) => {
+    setHabits((current) => current.filter((habit) => habit.id !== habitId));
+    if (apiEnabled && getTokens()) apiRequest(`/api/habits/${habitId}/`, { method: "DELETE" }).catch(() => undefined);
+  };
+
   const addEvent = (title: string, date: string, time: string, tag = "Личное") => {
     const value = title.trim();
     if (!value) return;
@@ -685,6 +690,7 @@ export function useDayCore() {
     removeTask,
     addHabit,
     toggleHabitDay,
+    removeHabit,
     addEvent,
     removeEvent,
     addCategory,
